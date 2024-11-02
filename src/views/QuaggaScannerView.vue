@@ -1,5 +1,7 @@
 <template>
+
   <div id="scanner-container">
+    <h1> Nutri-Fi Grade</h1>
     <div id="interactive" class="viewport"></div>
 
     <p v-if="code">Detected Code: {{ code }}</p>
@@ -18,13 +20,23 @@
     "nutriGrade": "UNDEFINED",
     "reasoning": "The description provided does not contain any references to food or food products. As such, it cannot be classified into any of the NOVA categories, which are specifically designed for categorizing foods and food products based on their processing levels. Similarly, there is no basis to evaluate a Nutri-Grade, which is used to assess the nutritional value of food and beverages. The description pertains to a room setting and group activity, with no mention or indication of any consumables. Therefore, both NOVA and Nutri-Grade classifications are not applicable."
 } -->
-    <div v-if="processingResult">
-      <h3>Observation:</h3>
-      <p>{{ processingResult.observation }}</p>
+
+    <div v-if="processingResult" style="margin-top: 2rem;">
+      Observation:  {{ processingResult.observation }}
+      <br/>
       <h3>Nova Classification:</h3>
-      <p>{{ processingResult.novaClassification }}</p>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/5/54/NOVA_group_1.svg" v-if="processingResult.novaClassification === 1"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/a/ac/NOVA_group_2.svg" v-else-if="processingResult.novaClassification === 2"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/2/26/NOVA_group_3.svg" v-else-if="processingResult.novaClassification === 3"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/d/d3/NOVA_group_4.svg" v-else-if="processingResult.novaClassification === 4"/>
+      <div v-else>Unknown</div>
       <h3>Nutri-score:</h3>
-      <p>{{ processingResult.nutriGrade }}</p>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/7/7d/Nutri-score-A.svg" v-if="processingResult.nutriGrade === 'A'"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/4/4e/Nutri-score-B.svg" v-else-if="processingResult.nutriGrade === 'B'"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/b/b5/Nutri-score-C.svg" v-else-if="processingResult.nutriGrade === 'C'"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Nutri-score-D.svg" v-else-if="processingResult.nutriGrade === 'D'"/>
+      <img src="https://upload.wikimedia.org/wikipedia/commons/8/8a/Nutri-score-E.svg" v-else-if="processingResult.nutriGrade === 'E'"/>
+      <div v-else>Unknown</div>
     </div>
   </div>
 </template>
