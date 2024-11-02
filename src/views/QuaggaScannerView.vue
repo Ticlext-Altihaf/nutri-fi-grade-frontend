@@ -182,6 +182,14 @@ export default {
           }
         })
         .catch(error => {
+          // check if 404
+          if (error.response?.status === 404) {
+            this.processingResult = {
+              observation: 'Product not found',
+              novaClassification: 'UNDEFINED',
+              nutriGrade: 'UNDEFINED',
+            }
+          }
           console.error('Error:', error)
         })
     },
