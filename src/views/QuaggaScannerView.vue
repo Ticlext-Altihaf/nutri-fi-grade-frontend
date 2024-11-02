@@ -5,8 +5,6 @@
     <p v-if="code">Detected Code: {{ code }}</p>
 
     <div class="controls">
-      <button v-if="scanning" @click="stopScanner">Stop</button>
-      <button v-else @click="startScanner">Start</button>
 
       <button :disabled="isProcessing" @click="takePhoto">
         <div v-if="isProcessing">{{ processingTimeLeft }}</div>
@@ -21,7 +19,6 @@
     "reasoning": "The description provided does not contain any references to food or food products. As such, it cannot be classified into any of the NOVA categories, which are specifically designed for categorizing foods and food products based on their processing levels. Similarly, there is no basis to evaluate a Nutri-Grade, which is used to assess the nutritional value of food and beverages. The description pertains to a room setting and group activity, with no mention or indication of any consumables. Therefore, both NOVA and Nutri-Grade classifications are not applicable."
 } -->
     <div v-if="processingResult">
-
       <h3>Observation:</h3>
       <p>{{ processingResult.observation }}</p>
       <h3>Nova Classification:</h3>
@@ -35,11 +32,13 @@
 <script lang="ts">
 import Quagga, { type QuaggaJSResultObject } from '@ericblade/quagga2' // ES6
 import axios from 'axios'
+import type { EAN13Product } from '@/models/EAN13Product'
 
 export default {
   data() {
     return {
       code: null as string | null,
+      eanResult: undefined as EAN13Product | undefined,
       scanning: false,
       isProcessing: false,
       processingResult: null as any,
@@ -72,6 +71,22 @@ export default {
       const seconds = Math.floor(diff / 1000)
       const milliseconds = diff % 1000
       return `${seconds}s ${milliseconds}ms`
+    },
+    isValidEAN13(ean13: string): boolean {
+      if (ean13.length !== 13 || !/^\d+$/.test(ean13)) {
+        return false
+      }
+
+      let sum = 0
+      for (let i = 0; i < 12; i++) {
+        const digit = parseInt(ean13[i], 10)
+        sum += i % 2 === 0 ? digit : digit * 3
+      }
+
+      const checkDigit = (10 - (sum % 10)) % 10
+      const lastDigit = parseInt(ean13[12], 10)
+
+      return checkDigit === lastDigit
     },
     startScanner() {
       console.log('Starting scanner')
@@ -152,9 +167,34 @@ export default {
         }
       }
     },
+    onEan13Detected(result: string) {
+      //console.log('Detected EAN13:', result)
+      this.eanResult = undefined
+      axios
+        .post(`http://localhost:5128/Analysis/Method1?ean13=${result}`)
+        .then(response => {
+          //console.log('Response:', response.data)
+          this.eanResult = response.data
+          this.processingResult = {
+            observation: this.eanResult?.product?.product_name,
+            novaClassification: this.eanResult?.product?.nova_group,
+            nutriGrade: this.eanResult?.product?.nutriscore_grade,
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error)
+        })
+    },
     onDetected(result: QuaggaJSResultObject) {
       this.code = result.codeResult.code
-      console.log('Detected code:', this.code)
+      /**
+       * curl -X 'POST' \
+       *   'http://localhost:5128/Analysis/Method1?ean13=8992775913000' \
+       *   -H 'accept: *
+       **/
+      if (this.code && this.isValidEAN13(this.code)) {
+        this.onEan13Detected(this.code)
+      }
     },
     stopScanner() {
       Quagga.stop()
