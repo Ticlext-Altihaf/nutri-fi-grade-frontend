@@ -172,6 +172,8 @@ export default {
         //document.body.appendChild(img)
         const blob = await (await fetch(dataURL)).blob()
 
+        ogCanvas.getContext('2d')?.drawImage(ogCanvas, 0, 0)
+
         const formData = new FormData()
         formData.append('image', blob, 'image.png')
 
