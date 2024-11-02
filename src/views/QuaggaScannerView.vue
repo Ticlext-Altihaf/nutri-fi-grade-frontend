@@ -31,10 +31,12 @@ export default {
               height: { ideal: 2160 }
             },
           },
+
           locate: true,
-          numOfWorkers: (navigator.hardwareConcurrency * 0.8) || 4,
+          numOfWorkers: Math.max(Math.floor(navigator.hardwareConcurrency * 0.7), 2),
           decoder: {
             readers: ['ean_reader'],
+
           },
         },
         err => {
