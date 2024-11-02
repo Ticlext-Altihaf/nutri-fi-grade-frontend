@@ -27,10 +27,12 @@ export default {
             target: document.querySelector('#interactive') as HTMLElement,
             constraints: {
               facingMode: 'environment',
+              width: { ideal: 4096 },
+              height: { ideal: 2160 }
             },
           },
           locate: true,
-          numOfWorkers: 4,
+          numOfWorkers: (navigator.hardwareConcurrency * 0.8) || 4,
           decoder: {
             readers: ['ean_reader'],
           },
