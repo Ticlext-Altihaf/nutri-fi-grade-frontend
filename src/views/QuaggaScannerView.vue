@@ -45,7 +45,9 @@
 import Quagga, { type QuaggaJSResultObject } from '@ericblade/quagga2' // ES6
 import axios from 'axios'
 import type { EAN13Product } from '@/models/EAN13Product'
-
+const backendUrl = import.meta.env.VITE_APP_BACKEND_URL_EPIC as string
+console.log('Backend URL:', backendUrl)
+axios.defaults.baseURL = backendUrl
 export default {
   data() {
     return {
@@ -183,7 +185,7 @@ export default {
       //console.log('Detected EAN13:', result)
       this.eanResult = undefined
       axios
-        .post(`http://localhost:5128/Analysis/Method1?ean13=${result}`)
+        .post(`/Analysis/Method1?ean13=${result}`)
         .then(response => {
           //console.log('Response:', response.data)
           this.eanResult = response.data
@@ -238,7 +240,7 @@ export default {
         formData.append('image', blob, 'image.png')
 
         const response = await axios.post(
-          'http://localhost:5128/Analysis/Method3',
+          '/Analysis/Method3',
           formData,
           {
             headers: {
