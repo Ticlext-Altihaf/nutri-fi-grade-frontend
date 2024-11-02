@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // This starter template is using Vue 3 <script setup> SFCs
 // Check out https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup
-import CameraScanner from "@/components/CameraScanner.vue";
+import VueBarcodeScanner from "@/components/VueBarcodeScanner.vue";
 </script>
 
 <template>
   <h1>Vue Barcode Reader Demo</h1>
-  <CameraScanner />
+  <VueBarcodeScanner />
 </template>
 
 <style>

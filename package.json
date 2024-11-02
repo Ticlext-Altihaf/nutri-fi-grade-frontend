@@ -13,9 +13,10 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "quagga": "^0.12.1",
     "vue": "^3.5.12",
-    "vue-router": "^4.4.5",
-    "vue-barcode-reader": "^1.0.1"
+    "vue-barcode-reader": "^1.0.1",
+    "vue-router": "^4.4.5"
   },
   "devDependencies": {
     "@tsconfig/node20": "^20.1.4",
