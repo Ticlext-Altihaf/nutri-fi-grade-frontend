@@ -5,13 +5,11 @@
     <div id="interactive" class="viewport"></div>
 
     <p v-if="code">Detected Code: {{ code }}</p>
-
-    <div class="controls">
-
-      <button :disabled="isProcessing" @click="takePhoto">
-        <div v-if="isProcessing">{{ processingTimeLeft }}</div>
-        <div v-else>Take Photo</div>
-      </button>
+    <div v-if="isProcessing">{{ processingTimeLeft }}</div>
+    <div class="controls" v-else>
+      <button @click="triggerFileInput">Pick from Gallery</button>
+      <input type="file" ref="fileInput" @change="uploadImage" accept="image/*" style="display: none" />
+      <button @click="takePhoto">Take Photo</button>
     </div>
 
     <!-- {
@@ -81,6 +79,9 @@ export default {
     clearInterval(this.timer)
   },
   methods: {
+    triggerFileInput() {
+      (this.$refs.fileInput as HTMLInputElement).click();
+    },
     formatTime(diff: number) {
       const seconds = Math.floor(diff / 1000)
       const milliseconds = diff % 1000
@@ -223,22 +224,42 @@ export default {
       this.scanning = false
     },
     async takePhoto() {
-      this.isProcessing = true
-      // 30 seconds from now
-      this.estimateProcessingFinishTime = new Date(Date.now() + 30000)
-      const ogCanvas = Quagga.canvas.ctx.image.canvas
+      this.isProcessing = true;
+      this.estimateProcessingFinishTime = new Date(Date.now() + 30000);
+      const ogCanvas = Quagga.canvas.ctx.image.canvas;
       try {
-        const dataURL = ogCanvas.toDataURL('image/png')
-        //const img = document.createElement('img')
-        //img.src = ogCanvas.toDataURL('image/png')
-        //document.body.appendChild(img)
-        const blob = await (await fetch(dataURL)).blob()
+        const dataURL = ogCanvas.toDataURL('image/png');
+        const blob = await (await fetch(dataURL)).blob();
+        await this.upload(blob, 'image.png');
+      } catch (error) {
+        console.error('Error capturing photo:', error);
+      } finally {
+        this.isProcessing = false;
+        this.estimateProcessingFinishTime = null;
+      }
+    },
+    async uploadImage(event: Event) {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      if (!file) return;
 
-        ogCanvas.getContext('2d')?.drawImage(ogCanvas, 0, 0)
+      this.isProcessing = true;
+      this.estimateProcessingFinishTime = new Date(Date.now() + 30000);
 
-        const formData = new FormData()
-        formData.append('image', blob, 'image.png')
+      try {
+        await this.upload(file, file.name);
+      } catch (error) {
+        console.error('Error uploading image:', error);
+      } finally {
+        this.isProcessing = false;
+        this.estimateProcessingFinishTime = null;
+      }
+    },
+    async upload(file: Blob, filename: string) {
+      const formData = new FormData();
+      formData.append('image', file, filename);
 
+      try {
         const response = await axios.post(
           '/Analysis/Method3',
           formData,
@@ -246,21 +267,30 @@ export default {
             headers: {
               'Content-Type': 'multipart/form-data',
             },
-          },
-        )
+          }
+        );
 
         if (response.status === 200) {
-          console.log('Image uploaded successfully')
-          console.log(response.data)
-          this.processingResult = response.data
+          console.log('Image uploaded successfully');
+          console.log(response.data);
+          // replace novaClassification from FOUR to 4, THREE to 3, etc.
+          if (response.data.novaClassification) {
+            if(response.data.novaClassification === 'FOUR') {
+              response.data.novaClassification = 4;
+            } else if(response.data.novaClassification === 'THREE') {
+              response.data.novaClassification = 3;
+            } else if(response.data.novaClassification === 'TWO') {
+              response.data.novaClassification = 2;
+            } else if(response.data.novaClassification === 'ONE') {
+              response.data.novaClassification = 1;
+            }
+          }
+          this.processingResult = response.data;
         } else {
-          console.error('Upload failed')
+          console.error('Upload failed');
         }
       } catch (error) {
-        console.error('Error uploading image:', error)
-      } finally {
-        this.isProcessing = false
-        this.estimateProcessingFinishTime = null
+        console.error('Error uploading image:', error);
       }
     },
   },
