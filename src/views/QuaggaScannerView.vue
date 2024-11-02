@@ -3,23 +3,80 @@
     <div id="interactive" class="viewport"></div>
 
     <p v-if="code">Detected Code: {{ code }}</p>
+
+    <div class="controls">
+      <button v-if="scanning" @click="stopScanner">Stop</button>
+      <button v-else @click="startScanner">Start</button>
+
+      <button :disabled="isProcessing" @click="takePhoto">
+        <div v-if="isProcessing">{{ processingTimeLeft }}</div>
+        <div v-else>Take Photo</div>
+      </button>
+    </div>
+
+    <!-- {
+    "observation": "The image shows a room setup with large windows and blue curtains. There is a visible air conditioning unit mounted on the wall. Several people are seated and appear to be engaging in a group activity or discussion, with a laptop visible in front of one person. The person in the foreground is wearing a patterned shirt and a lanyard, suggesting a formal or conference setting.",
+    "novaClassification": "UNDEFINED",
+    "nutriGrade": "UNDEFINED",
+    "reasoning": "The description provided does not contain any references to food or food products. As such, it cannot be classified into any of the NOVA categories, which are specifically designed for categorizing foods and food products based on their processing levels. Similarly, there is no basis to evaluate a Nutri-Grade, which is used to assess the nutritional value of food and beverages. The description pertains to a room setting and group activity, with no mention or indication of any consumables. Therefore, both NOVA and Nutri-Grade classifications are not applicable."
+} -->
+    <div v-if="processingResult">
+
+      <h3>Observation:</h3>
+      <p>{{ processingResult.observation }}</p>
+      <h3>Nova Classification:</h3>
+      <p>{{ processingResult.novaClassification }}</p>
+      <h3>Nutri-score:</h3>
+      <p>{{ processingResult.nutriGrade }}</p>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
 import Quagga, { type QuaggaJSResultObject } from '@ericblade/quagga2' // ES6
+import axios from 'axios'
 
 export default {
   data() {
     return {
       code: null as string | null,
       scanning: false,
+      isProcessing: false,
+      processingResult: null as any,
+      estimateProcessingFinishTime: null as Date | null,
+      processingTimeLeft: null as string | null,
+      timer: undefined as number | undefined,
     }
   },
+  mounted() {
+    this.startScanner()
+    this.timer = setInterval(() => {
+      if (this.estimateProcessingFinishTime) {
+        const diff = this.estimateProcessingFinishTime.getTime() - Date.now()
+        if (diff > 0) {
+          // show seconds and milliseconds
+          this.processingTimeLeft = this.formatTime(diff)
+        } else {
+          this.processingTimeLeft = null
+        }
+      }
+    }, 100)
+  },
+  unmounted() {
+    Quagga.offDetected(this.onDetected)
+    this.stopScanner()
+    clearInterval(this.timer)
+  },
   methods: {
+    formatTime(diff: number) {
+      const seconds = Math.floor(diff / 1000)
+      const milliseconds = diff % 1000
+      return `${seconds}s ${milliseconds}ms`
+    },
     startScanner() {
       console.log('Starting scanner')
       this.scanning = true
+
       Quagga.init(
         {
           inputStream: {
@@ -28,15 +85,17 @@ export default {
             constraints: {
               facingMode: 'environment',
               width: { ideal: 4096 },
-              height: { ideal: 2160 }
+              height: { ideal: 2160 },
             },
           },
 
           locate: true,
-          numOfWorkers: Math.max(Math.floor(navigator.hardwareConcurrency * 0.7), 2),
+          numOfWorkers: Math.max(
+            Math.floor(navigator.hardwareConcurrency * 0.7),
+            2,
+          ),
           decoder: {
             readers: ['ean_reader'],
-
           },
         },
         err => {
@@ -101,23 +160,54 @@ export default {
       Quagga.stop()
       this.scanning = false
     },
-  },
-  mounted() {
-    this.startScanner()
-  },
-  unmounted() {
-    Quagga.offDetected(this.onDetected)
-    this.stopScanner()
+    async takePhoto() {
+      this.isProcessing = true
+      // 30 seconds from now
+      this.estimateProcessingFinishTime = new Date(Date.now() + 30000)
+      const ogCanvas = Quagga.canvas.ctx.image.canvas
+      try {
+        const dataURL = ogCanvas.toDataURL('image/png')
+        //const img = document.createElement('img')
+        //img.src = ogCanvas.toDataURL('image/png')
+        //document.body.appendChild(img)
+        const blob = await (await fetch(dataURL)).blob()
+
+        const formData = new FormData()
+        formData.append('image', blob, 'image.png')
+
+        const response = await axios.post(
+          'http://localhost:5128/Analysis/Method3',
+          formData,
+          {
+            headers: {
+              'Content-Type': 'multipart/form-data',
+            },
+          },
+        )
+
+        if (response.status === 200) {
+          console.log('Image uploaded successfully')
+          console.log(response.data)
+          this.processingResult = response.data
+        } else {
+          console.error('Upload failed')
+        }
+      } catch (error) {
+        console.error('Error uploading image:', error)
+      } finally {
+        this.isProcessing = false
+        this.estimateProcessingFinishTime = null
+      }
+    },
   },
 }
 </script>
 
 <style>
-@charset "UTF-8";
-@import url("https://fonts.googleapis.com/css?family=Ubuntu:400,700|Cabin+Condensed:400,600");
+@import url('https://fonts.googleapis.com/css?family=Ubuntu:400,700|Cabin+Condensed:400,600');
 
 body {
-  background-color: #FFF;
+  background-color: #fff;
   margin: 0px;
   font-family: Ubuntu, sans-serif;
   color: #1e1e1e;
@@ -125,12 +215,15 @@ body {
   padding-top: 0;
 }
 
-h1, h2, h3, h4 {
-  font-family: "Cabin Condensed", sans-serif;
+h1,
+h2,
+h3,
+h4 {
+  font-family: 'Cabin Condensed', sans-serif;
 }
 
 header {
-  background: #FFC600;
+  background: #ffc600;
   padding: 1em;
 }
 
@@ -140,7 +233,7 @@ header .headline {
 }
 
 header .headline h1 {
-  color: #FFDD69;
+  color: #ffdd69;
   font-size: 3em;
   margin-bottom: 0;
 }
@@ -150,8 +243,8 @@ header .headline h2 {
 }
 
 footer {
-  background: #0A4DB7;
-  color: #6C9CE8;
+  background: #0a4db7;
+  color: #6c9ce8;
   padding: 1em 2em 2em;
 }
 
@@ -166,14 +259,15 @@ footer {
   height: 480px;
 }
 
-
-#interactive.viewport canvas, video {
+#interactive.viewport canvas,
+video {
   float: left;
   width: 640px;
   height: 480px;
 }
 
-#interactive.viewport canvas.drawingBuffer, video.drawingBuffer {
+#interactive.viewport canvas.drawingBuffer,
+video.drawingBuffer {
   margin-left: -640px;
 }
 
@@ -187,7 +281,8 @@ footer {
   float: left;
 }
 
-.controls .input-group input, .controls .input-group button {
+.controls .input-group input,
+.controls .input-group button {
   display: block;
 }
 
@@ -211,11 +306,10 @@ footer {
   clear: both;
 }
 
-
 #result_strip {
   margin: 10px 0;
-  border-top: 1px solid #EEE;
-  border-bottom: 1px solid #EEE;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
   padding: 10px 0;
 }
 
@@ -238,7 +332,7 @@ footer {
 #result_strip > ul > li .thumbnail {
   padding: 5px;
   margin: 4px;
-  border: 1px dashed #CCC;
+  border: 1px dashed #ccc;
 }
 
 #result_strip > ul > li .thumbnail img {
@@ -257,11 +351,10 @@ footer {
 }
 
 #result_strip > ul:after {
-  content: "";
+  content: '';
   display: table;
   clear: both;
 }
-
 
 .scanner-overlay {
   display: none;
@@ -273,7 +366,7 @@ footer {
   margin-top: -275px;
   left: 50%;
   margin-left: -340px;
-  background-color: #FFF;
+  background-color: #fff;
   -moz-box-shadow: #333333 0px 4px 10px;
   -webkit-box-shadow: #333333 0px 4px 10px;
   box-shadow: #333333 0px 4px 10px;
@@ -284,7 +377,8 @@ footer {
   margin-bottom: 14px;
 }
 
-.scanner-overlay > .header h4, .scanner-overlay > .header .close {
+.scanner-overlay > .header h4,
+.scanner-overlay > .header .close {
   line-height: 16px;
 }
 
@@ -305,11 +399,10 @@ footer {
   cursor: pointer;
 }
 
-
 i.icon-24-scan {
   width: 24px;
   height: 24px;
-  background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6QzFFMjMzNTBFNjcwMTFFMkIzMERGOUMzMzEzM0E1QUMiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6QzFFMjMzNTFFNjcwMTFFMkIzMERGOUMzMzEzM0E1QUMiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpDMUUyMzM0RUU2NzAxMUUyQjMwREY5QzMzMTMzQTVBQyIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDpDMUUyMzM0RkU2NzAxMUUyQjMwREY5QzMzMTMzQTVBQyIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PtQr90wAAAUuSURBVHjanFVLbFRVGP7ua97T9DGPthbamAYYBNSMVbBpjCliWWGIEBMWsnDJxkh8RDeEDW5MDGticMmGBWnSlRSCwgLFNkqmmrRIqzjTznTazkxn5s7c6/efzm0G0Jhwkj/nP+d/nv91tIWFBTQaDQWapkGW67p4ltUub5qmAi0UCqF/a/U2m81tpmddotwwDGSz2dzi4uKSaOucnJycGhsbe1XXdQiIIcdxEAgEtgXq9brySHCht79UXi/8QheawN27d385fPjwuEl6XyKR6LdtW7t06RLK5TKOHj2K/fv3Q87Dw8OYn5/HiRMnMDs7i5mZGQwODiqlPp8PuVwO6XRaOXb16lXl1OnTp5FMJvtosF8M+MWLarWqGJaWlpBKpRRcu3YN4+PjmJ6exsTEhDJw5coVjI6OKgPhcBiZTAbxeBx+vx+XL19Gd3c3Tp48Ka9zqDYgBlTQxYNgMIhIJKLCILkQb+TZsgvdsiyFi+feWRR7oRNZyanQtvW2V4DEUUBiK2eJpeDirSyhCe7F2QPh8fiEp72i9PbsC5G52DbiKZA771yr1dTuGfJ4PQNPFoAyQNR1aNEmsS5eyB3PgjeooMZd2AWvNmzYci/Gea7TeFOcI93jV/K67noGmi4vdRI9gPSDeMLSdKUBZZczlWm1rTtHjLZ24d+WER2tc8N1m+Y+ID74wx0zGYvhg9UNrJdtHJyZRdQfwPsrq9g99xsGlgsYmr6BNzO/IVwsYfjBQ6XYz6JI/72MV366B5/lw0elOkJWGUM3bmKtWjXSLuLaBWhnPnnp0FfoiFi4+TMfVAb2poBkDLjO845uYLEAjL4ALGWBP5YAOsP4AJYBFDaB1HOSVWD2PuV95H2RdV93Lv74/cf6p6Zxq/h6OofeOPJBC39JtONdwOAAViOs4p4OFGTf0Uc8iiyrr9YdQrUnDLsngrVOC0jQib44HlF2RafRZBz1Qy+vfhgK3NJZBlrm+LEm9qWwzFgLU7Ozg0JxZP06jQSRpQ7EerAWDSt6PuhHPmChEAog56fCLvJT5hHTm3OZkz3DyLx7XNWTGEA1GkV14gjWgwbW0ESVjYRwCOuai03L5E7OUBAV4kXSS4auoGIaKOma4m8EA5R1sMEGLh95C+XuLph0WJWpxepYYLtfT0RRgY1KgNODY6BoaChRuEhDCIZQYseuki5KN6hcQHiq7OZNv4/Zq2O6P4Lfkwn46vZjjaYZrIpvWbpzjLErrc4xUGE4avRedpYJalRcIl5hQius/SrPm9xrNOQYJhao6BvNUeWqtY8KaWuNjHOFAr7mM9f4NA4UbKysoUJ8PV9UzVOx6wxDDWUOxnK1pmCD07fOMAvtIsM3l89Dl3HRGhVma9AZMqjOnz2LQqWCxs6dqr3T7x1DTzKJaG8SekcHhg4cgI/56uKdlKnBV/WndqN3YAB/7tyBd3oT6GBIOzs7kc/nDfFdDFT5bS73cp06dQoaPa/Rw/rtO/resTHxxE2m9rCrbSR27UJCcMf1BpiA5rAAGgdfc868fUR1sMwj0cm9Iu9IctweisViB3hhKTHDcHc5jv/LspbyaZrR1OD82/fIlOkuB9LnEWRmDX2TsddUPg3D5gvuc0je0rZaD5EW6G3yjS+A3eeBEWq3XW/Abw1HhUspXADufQb86oW7tZytkYCN//3hHwBvDALPi8EnSOYK8DAOfCc2h4aGcO7cuafkzampqf9UripH12/DtOZbx8ciVGzYy5OO40o25ascGRl5Ssc/AgwAjW3JwqIUjSYAAAAASUVORK5CYII=");
+  background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyJpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuMy1jMDExIDY2LjE0NTY2MSwgMjAxMi8wMi8wNi0xNDo1NjoyNyAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RSZWY9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZVJlZiMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENTNiAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6QzFFMjMzNTBFNjcwMTFFMkIzMERGOUMzMzEzM0E1QUMiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6QzFFMjMzNTFFNjcwMTFFMkIzMERGOUMzMzEzM0E1QUMiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDpDMUUyMzM0RUU2NzAxMUUyQjMwREY5QzMzMTMzQTVBQyIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDpDMUUyMzM0RkU2NzAxMUUyQjMwREY5QzMzMTMzQTVBQyIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/PtQr90wAAAUuSURBVHjanFVLbFRVGP7ua97T9DGPthbamAYYBNSMVbBpjCliWWGIEBMWsnDJxkh8RDeEDW5MDGticMmGBWnSlRSCwgLFNkqmmrRIqzjTznTazkxn5s7c6/efzm0G0Jhwkj/nP+d/nv91tIWFBTQaDQWapkGW67p4ltUub5qmAi0UCqF/a/U2m81tpmddotwwDGSz2dzi4uKSaOucnJycGhsbe1XXdQiIIcdxEAgEtgXq9brySHCht79UXi/8QheawN27d385fPjwuEl6XyKR6LdtW7t06RLK5TKOHj2K/fv3Q87Dw8OYn5/HiRMnMDs7i5mZGQwODiqlPp8PuVwO6XRaOXb16lXl1OnTp5FMJvtosF8M+MWLarWqGJaWlpBKpRRcu3YN4+PjmJ6exsTEhDJw5coVjI6OKgPhcBiZTAbxeBx+vx+XL19Gd3c3Tp48Ka9zqDYgBlTQxYNgMIhIJKLCILkQb+TZsgvdsiyFi+feWRR7oRNZyanQtvW2V4DEUUBiK2eJpeDirSyhCe7F2QPh8fiEp72i9PbsC5G52DbiKZA771yr1dTuGfJ4PQNPFoAyQNR1aNEmsS5eyB3PgjeooMZd2AWvNmzYci/Gea7TeFOcI93jV/K67noGmi4vdRI9gPSDeMLSdKUBZZczlWm1rTtHjLZ24d+WER2tc8N1m+Y+ID74wx0zGYvhg9UNrJdtHJyZRdQfwPsrq9g99xsGlgsYmr6BNzO/IVwsYfjBQ6XYz6JI/72MV366B5/lw0elOkJWGUM3bmKtWjXSLuLaBWhnPnnp0FfoiFi4+TMfVAb2poBkDLjO845uYLEAjL4ALGWBP5YAOsP4AJYBFDaB1HOSVWD2PuV95H2RdV93Lv74/cf6p6Zxq/h6OofeOPJBC39JtONdwOAAViOs4p4OFGTf0Uc8iiyrr9YdQrUnDLsngrVOC0jQib44HlF2RafRZBz1Qy+vfhgK3NJZBlrm+LEm9qWwzFgLU7Ozg0JxZP06jQSRpQ7EerAWDSt6PuhHPmChEAog56fCLvJT5hHTm3OZkz3DyLx7XNWTGEA1GkV14gjWgwbW0ESVjYRwCOuai03L5E7OUBAV4kXSS4auoGIaKOma4m8EA5R1sMEGLh95C+XuLph0WJWpxepYYLtfT0RRgY1KgNODY6BoaChRuEhDCIZQYseuki5KN6hcQHiq7OZNv4/Zq2O6P4Lfkwn46vZjjaYZrIpvWbpzjLErrc4xUGE4avRedpYJalRcIl5hQius/SrPm9xrNOQYJhao6BvNUeWqtY8KaWuNjHOFAr7mM9f4NA4UbKysoUJ8PV9UzVOx6wxDDWUOxnK1pmCD07fOMAvtIsM3l89Dl3HRGhVma9AZMqjOnz2LQqWCxs6dqr3T7x1DTzKJaG8SekcHhg4cgI/56uKdlKnBV/WndqN3YAB/7tyBd3oT6GBIOzs7kc/nDfFdDFT5bS73cp06dQoaPa/Rw/rtO/resTHxxE2m9rCrbSR27UJCcMf1BpiA5rAAGgdfc868fUR1sMwj0cm9Iu9IctweisViB3hhKTHDcHc5jv/LspbyaZrR1OD82/fIlOkuB9LnEWRmDX2TsddUPg3D5gvuc0je0rZaD5EW6G3yjS+A3eeBEWq3XW/Abw1HhUspXADufQb86oW7tZytkYCN//3hHwBvDALPi8EnSOYK8DAOfCc2h4aGcO7cuafkzampqf9UripH12/DtOZbx8ciVGzYy5OO40o25ascGRl5Ssc/AgwAjW3JwqIUjSYAAAAASUVORK5CYII=');
   display: inline-block;
   background-repeat: no-repeat;
   line-height: 24px;
@@ -318,7 +411,6 @@ i.icon-24-scan {
 }
 
 @media (max-width: 603px) {
-
   #container {
     width: 300px;
     margin: 10px auto;
@@ -331,8 +423,8 @@ i.icon-24-scan {
     width: 180px;
   }
 }
-@media (max-width: 603px) {
 
+@media (max-width: 603px) {
   .reader-config-group {
     width: 100%;
   }
@@ -341,7 +433,8 @@ i.icon-24-scan {
     width: 50%;
   }
 
-  .reader-config-group label > select, .reader-config-group label > input {
+  .reader-config-group label > select,
+  .reader-config-group label > input {
     max-width: calc(50% - 2px);
   }
 
@@ -351,17 +444,17 @@ i.icon-24-scan {
     overflow: hidden;
   }
 
-
-  #interactive.viewport canvas, video {
+  #interactive.viewport canvas,
+  video {
     margin-top: -50px;
     width: 300px;
     height: 400px;
   }
 
-  #interactive.viewport canvas.drawingBuffer, video.drawingBuffer {
+  #interactive.viewport canvas.drawingBuffer,
+  video.drawingBuffer {
     margin-left: -300px;
   }
-
 
   #result_strip {
     margin-top: 5px;
@@ -384,15 +477,15 @@ i.icon-24-scan {
     height: 180px;
   }
 }
-@media (max-width: 603px) {
 
+@media (max-width: 603px) {
   .overlay.scanner {
     width: 640px;
     height: 510px;
     padding: 20px;
     margin-top: -275px;
     margin-left: -340px;
-    background-color: #FFF;
+    background-color: #fff;
     -moz-box-shadow: none;
     -webkit-box-shadow: none;
     box-shadow: none;
@@ -402,7 +495,8 @@ i.icon-24-scan {
     margin-bottom: 14px;
   }
 
-  .overlay.scanner > .header h4, .overlay.scanner > .header .close {
+  .overlay.scanner > .header h4,
+  .overlay.scanner > .header .close {
     line-height: 16px;
   }
 
